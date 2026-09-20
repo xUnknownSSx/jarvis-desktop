@@ -58,7 +58,7 @@ npm start
 To generate a standalone Windows installer package (.exe):
 
 ```bash
-npm start
+npm run dist
 ```
 
 The output setup file will be generated in the ./dist directory (JARVIS Setup 1.0.0.exe).
