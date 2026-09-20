@@ -43,17 +43,23 @@ cd jarvis-desktop
 
 2. Install Dependencies:
 
+```bash
 npm install
+```
 
 3. Run Application
 
+```bash
 npm start
+```
 
 ## 📦 Building the Installer (.exe)
 
 To generate a standalone Windows installer package (.exe):
 
+```bash
 npm start
+```
 
 The output setup file will be generated in the ./dist directory (JARVIS Setup 1.0.0.exe).
 
