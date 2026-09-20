@@ -61,6 +61,6 @@ The output setup file will be generated in the ./dist directory (JARVIS Setup 1.
 
 Action                                    Control
 
-Toggle Window                             Alt + J, 
-Start Listening                           Click Activate Jarvis, 
-Process Speech                            Click Stop & Process, 
+Toggle Window:                            Alt + J, 
+Start Listening:                          Click Activate Jarvis, 
+Process Speech:                           Click Stop & Process, 
