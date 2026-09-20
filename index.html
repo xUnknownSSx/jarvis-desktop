@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Jarvis AI</title>
+    <style>
+        * { box-sizing: border-box; user-select: none; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: rgba(11, 14, 20, 0.95);
+            color: #00f0ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            border-radius: 16px;
+            border: 2px solid #00f0ff;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+            overflow: hidden;
+            -webkit-app-region: drag;
+        }
+        button, #log, #status { -webkit-app-region: no-drag; }
+        .arc-reactor {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            border: 4px solid #00f0ff;
+            box-shadow: 0 0 25px #00f0ff, inset 0 0 25px #00f0ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 25px;
+            animation: pulse 2s infinite alternate;
+        }
+        .inner-core {
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            background: #00f0ff;
+            box-shadow: 0 0 20px #00f0ff;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 15px #00f0ff, inset 0 0 15px #00f0ff; }
+            100% { box-shadow: 0 0 40px #00f0ff, inset 0 0 40px #00f0ff; }
+        }
+        button {
+            background-color: transparent;
+            color: #00f0ff;
+            border: 2px solid #00f0ff;
+            padding: 10px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        button:hover {
+            background-color: #00f0ff;
+            color: #0b0e14;
+            box-shadow: 0 0 20px #00f0ff;
+        }
+        #status { margin-top: 15px; font-size: 14px; color: #7fdbff; }
+        #log {
+            margin-top: 20px;
+            max-width: 85%;
+            text-align: center;
+            line-height: 1.5;
+            font-size: 15px;
+            color: #ffffff;
+            height: 60px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="arc-reactor">
+        <div class="inner-core"></div>
+    </div>
+    <button id="listenBtn">Activate Jarvis</button>
+    <div id="status">Status: Standby (Alt+J to Hide/Show)</div>
+    <div id="log">Click activate and speak...</div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const button = document.getElementById('listenBtn');
+        const status = document.getElementById('status');
+        const log = document.getElementById('log');
+
+        let isRecording = false;
+        let mediaRecorder;
+        let audioChunks = [];
+
+        function speak(text) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.pitch = 0.9;
+            utterance.rate = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        button.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+
+                    mediaRecorder.onstop = async () => {
+                        status.innerText = "Status: Transcribing (Local Whisper)...";
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        
+                        // Convert audio blob to ArrayBuffer
+                        const arrayBuffer = await audioBlob.arrayBuffer();
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                        const decodedData = await audioContext.decodeAudioData(arrayBuffer);
+                        const float32Data = decodedData.getChannelData(0);
+
+                        // Transcribe audio using local Whisper
+                        const transRes = await ipcRenderer.invoke('transcribe-audio', Array.from(float32Data));
+                        
+                        if (transRes.text && transRes.text.trim().length > 0) {
+                            log.innerText = "You: " + transRes.text;
+                            status.innerText = "Status: Querying Ollama...";
+                            
+                            const ollamaRes = await ipcRenderer.invoke('ask-ollama', transRes.text);
+                            if (ollamaRes.reply) {
+                                status.innerText = "Status: Standby";
+                                log.innerText = "Jarvis: " + ollamaRes.reply;
+                                speak(ollamaRes.reply);
+                            } else {
+                                status.innerText = "Error: " + ollamaRes.error;
+                            }
+                        } else {
+                            status.innerText = "Status: No voice detected. Try again.";
+                        }
+                    };
+
+                    mediaRecorder.start();
+                    isRecording = true;
+                    button.innerText = "Stop & Process";
+                    status.innerText = "Status: Listening...";
+                } catch (err) {
+                    status.innerText = "Mic Access Error: " + err.message;
+                }
+            } else {
+                mediaRecorder.stop();
+                isRecording = false;
+                button.innerText = "Activate Jarvis";
+            }
+        });
+    </script>
+</body>
+</html>
