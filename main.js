@@ -1,5 +1,7 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu } = require('electron');
 const path = require('path');
+
+let tray = null;
 
 let win;
 let transcriber = null;
@@ -72,7 +74,28 @@ ipcMain.handle('ask-ollama', async (event, prompt) => {
 
 app.whenReady().then(() => {
     createWindow();
-    loadWhisper(); // Preload local Whisper model into memory
+    loadWhisper();
+
+    // Prevent quitting on close
+    win.on('close', (event) => {
+        if (!app.isQuitting) {
+            event.preventDefault();
+            win.hide();
+        }
+        return false;
+    });
+
+    // Create the System Tray Icon
+    tray = new Tray(path.join(__dirname, 'icon.png'));
+    const contextMenu = Menu.buildFromTemplate([
+        { label: 'Wake JARVIS', click: () => win.show() },
+        { label: 'Quit System', click: () => {
+            app.isQuitting = true;
+            app.quit();
+        }}
+    ]);
+    tray.setToolTip('JARVIS AI Assistant');
+    tray.setContextMenu(contextMenu);
 });
 
 app.on('window-all-closed', () => {
