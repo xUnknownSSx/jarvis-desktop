@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, clipboard, desktopCapturer, screen } = require('electron');
 const path = require('path');
+const si = require('systeminformation');
 
 let tray = null;
 
@@ -28,6 +29,45 @@ function getMemory() {
 // Save memory to file
 function saveMemory(data) {
     fs.writeFileSync(MEMORY_PATH, JSON.stringify(data, null, 2));
+}
+
+// Helper to capture a full-resolution desktop screenshot
+async function captureScreen() {
+    // Hide JARVIS window briefly so it doesn't appear in the screenshot
+    if (win && win.isVisible()) {
+        win.hide();
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+
+    const primaryDisplay = screen.getPrimaryDisplay();
+    const { width, height } = primaryDisplay.size;
+
+    // Capture screen sources at display resolution
+    const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width, height }
+    });
+
+    const primarySource = sources[0];
+    const imageBuffer = primarySource.thumbnail.toPNG();
+
+    // Create 'JARVIS Screenshots' folder in the user's Pictures directory
+    const picturesDir = path.join(app.getPath('pictures'), 'JARVIS Screenshots');
+    if (!fs.existsSync(picturesDir)) {
+        fs.mkdirSync(picturesDir, { recursive: true });
+    }
+
+    // Save with a timestamped filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = path.join(picturesDir, `Screenshot_${timestamp}.png`);
+    fs.writeFileSync(filePath, imageBuffer);
+
+    // Re-show JARVIS window
+    if (win) {
+        win.show();
+    }
+
+    return filePath;
 }
 
 async function loadWhisper() {
@@ -109,6 +149,46 @@ ipcMain.handle('ask-ollama', async (event, prompt) => {
         if (lowerText.includes("clear memory") || lowerText.includes("wipe memory")) {
             saveMemory({ notes: [] });
             return { reply: "Local memory logs have been wiped clean, sir." };
+        }
+
+        // --- SCREENSHOT COMMAND ---
+        if (
+            lowerText.includes("take a screenshot") || 
+            lowerText.includes("capture screen") || 
+            lowerText.includes("screenshot this") ||
+            lowerText.includes("take screenshot")
+        ) {
+            const filePath = await captureScreen();
+            return { reply: `Screenshot saved successfully to ${filePath}` };
+        }
+
+        // --- SYSTEM DIAGNOSTICS: STATUS REPORT ---
+        if (
+            lowerText.includes("status report") || 
+            lowerText.includes("system health") || 
+            lowerText.includes("system diagnostics") || 
+            lowerText.includes("cpu usage")
+        ) {
+            // Fetch CPU load, Memory, and Battery info in parallel
+            const [cpu, mem, battery] = await Promise.all([
+                si.currentLoad(),
+                si.mem(),
+                si.battery()
+            ]);
+
+            const cpuLoad = cpu.currentLoad.toFixed(1);
+            const ramUsedGB = (mem.active / (1024 ** 3)).toFixed(1);
+            const ramTotalGB = (mem.total / (1024 ** 3)).toFixed(1);
+            const ramPercent = ((mem.active / mem.total) * 100).toFixed(0);
+
+            let batteryText = "";
+            if (battery.hasBattery) {
+                batteryText = ` Battery is currently at ${battery.percent}%${battery.isCharging ? ' and charging' : ''}.`;
+            }
+
+            return {
+                reply: `All systems operational, sir. CPU load is at ${cpuLoad}%. Memory usage is at ${ramUsedGB} GB out of ${ramTotalGB} GB (${ramPercent}%).${batteryText}`
+            };
         }
 
         // --- 4. CLIPBOARD: FIX CODE ---
